@@ -1,4 +1,5 @@
-from .helpers import read_json, create_folders
+from source.helpers import read_json, create_folders
+from toomanycells import TooManyCells as tmc
 import unittest
 import subprocess
 import os
@@ -27,134 +28,36 @@ class RunTmsTest(unittest.TestCase):
         req_folders = [self.path_mainf] + [os.path.join(self.path_mainf, "-".join([self.db_name, f"subject{i}"])) for i in self.db_subjects]
         create_folders(req_folders)
 
-    
+
+    # Running the too many cells spectral clusring algorthim on the input data
     def test_02_run_tms(self):
         for i in self.db_subjects:
+            # output and input path
             folder_name = "-".join([self.db_name, f"subject{i}"])
-            input_path = os.path.join("tms_input", folder_name)
-            output_path = os.path.join("tms_output", folder_name)
+            i_input = os.path.join("tms_input", folder_name)
+            i_output = os.path.join("tms_output", folder_name)
 
-            tms_cmd = [
-            "too-many-cells", "make-tree",
-            "--matrix-path", str(input_path),
-            "--labels-file", str(os.path.join(input_path, "labels.csv")),
-            "--draw-collection", "PieRing", ## lack of ram may cause too many cells to freeze / crash
-            "--output", output_path
-                        ]
-
-            try:
-                subprocess.run(tms_cmd, 
-                               check=True)
-                
-                print(f"Successfully processed {folder_name}")
-                
-            except subprocess.CalledProcessError as pr_error:
-                print(f"Error running TMS for {folder_name}: {pr_error}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-def run_tms_pipeline():
-    # 1. Load configuration from sql_config.json
-    config_path = Path("sql_config.json")
-    if not config_path.exists():
-        print(f"Error: {config_path} not found.")
-        return
-
-    with open(config_path, "r") as f:
-        config = json.load(f)
-
-    db_name = config["database"]["db_name"]
-    # Convert subject_id string "1,2,3" into a list ["1", "2", "3"]
-    subject_ids = [s.strip() for s in config["database"]["subject_id"].split(",")]
-
-    # 2. Define main paths
-    main_dir = Path.cwd()
-    input_root = main_dir / "tms_input"
-    output_root = main_dir / "tms_output"
-
-    # Create tms_output folder if it doesn't exist
-    output_root.mkdir(parents=True, exist_ok=True)
-
-    # 3. Iterate over subjects
-    for sub_id in subject_ids:
-        folder_name = f"{db_name}-{sub_id}"
-        
-        # Define specific subject paths
-        sub_input_dir = input_root / folder_name
-        sub_output_dir = output_root / folder_name
-        
-        # Create the subject-specific output directory
-        sub_output_dir.mkdir(parents=True, exist_ok=True)
-        
-        labels_file = sub_input_dir / "labels.csv"
-        matrix_path = sub_input_dir / "input" # Assuming 'input' matrix is inside the subject folder
-
-        if not labels_file.exists():
-            print(f"Warning: Labels file not found for {folder_name}. Skipping...")
-            continue
-
-        print(f"Processing: {folder_name}...")
-
-        # 4. Construct and Run the TMS command
-        # The command is executed with sub_output_dir as the working directory
-        tms_cmd = [
-            "too-many-cells", "make-tree",
-            "--matrix-path", str(matrix_path),
-            "--labels-file", str(labels_file),
-            "--draw-collection", "PieRing",
-            "--output", "out"
-        ]
-
-        try:
-            os.system.subprocess.run(
-                tms_cmd, 
-                cwd=str(sub_output_dir), # Run command inside the specific output folder
-                check=True
-                                    )
+            # output files, used to check if the output already exists
+            output_required = ["cluster_list.json", "cluster_tree.json", "clusters.csv","graph.json", "node_info.csv"]
+            output_actual = os.listdir(i_output)
             
-            print(f"Successfully processed {folder_name}")
-            
-        except os.system.subprocess.CalledProcessError as pr_error:
-            print(f"Error running TMS for {folder_name}: {pr_error}")
+            # Checking if the output already exists
+            if set(output_required) == set(output_actual):
+                print(f"> too many cells already processed subject {i}.")
+
+            # if not, run too many cells on the subject
+            else:
+                try:
+                    # Creating too many cells object with the loaded data.
+                    tmc_obj = tmc(i_input,
+                                   i_output,
+                                  input_is_matrix_market=True)
+
+                    # Runnig the spectral clustring 
+                    tmc_obj.run_spectral_clustering()
+
+                    # Storing the outputs in the input folder
+                    tmc_obj.store_outputs()
+                
+                except subprocess.CalledProcessError as pr_error:
+                    print(f"Encounted error while trying to run python-toomacnycells")

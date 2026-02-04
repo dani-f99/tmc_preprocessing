@@ -3,6 +3,7 @@ sql_config.json
 dev_notebook.ipynb
 temp_data
 tms_input
+tms_output
 reports
 rem.csv
 .archive

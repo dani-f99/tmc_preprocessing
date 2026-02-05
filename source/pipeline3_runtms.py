@@ -1,5 +1,5 @@
 from source.helpers import read_json, create_folders
-from toomanycells import TooManyCells as tmc
+from source.toomanycells.toomanycells import TooManyCells as tmc
 import unittest
 import subprocess
 import os

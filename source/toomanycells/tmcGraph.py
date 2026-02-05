@@ -1,0 +1,956 @@
+#########################################################
+#Princess Margaret Cancer Research Tower
+#Schwartz Lab
+#Javier Ruiz Ramirez
+#November 2025
+#########################################################
+#This is a Python script to produce TMC trees using
+#the original too-many-cells tool.
+#https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7439807/
+#########################################################
+#Questions? Email me at: javier.ruizramirez@uhn.ca
+#########################################################
+
+from anndata import AnnData
+
+from networkx import DiGraph
+from networkx import descendants as nx_descendants
+
+from typing import Set
+from typing import List
+from typing import Union
+from typing import Optional
+
+from os.path import dirname
+from os.path import join as os_path_join
+from os.path import exists as os_path_exists
+
+from collections import deque
+
+import sys
+sys.path.insert(0, dirname(__file__))
+
+from common import MultiIndexList
+from common import JEncoder
+
+class TMCGraph:
+    #=====================================
+    def __init__(self,
+                 graph: DiGraph,
+                 adata: AnnData,
+                 output: str,
+        ):
+
+        self.G = graph
+        self.A = adata
+        self.output = output
+
+
+        # In case the graph is not empty, 
+        # populate the set_of_leaf_nodes().
+        self.find_leaf_nodes()
+
+        self.J = MultiIndexList()
+
+        #Map a node to the path in the
+        #binary tree that connects the
+        #root node to the given node.
+        self.node_to_path = {}
+
+        #Map a node to a list of indices
+        #that provide access to the JSON
+        #structure.
+        self.node_to_j_index = {}
+
+        self.node_counter = 0
+        self.set_of_red_clusters = set()
+
+
+
+    #=====================================
+    def find_leaf_nodes(self):
+        """
+        Find all leaf nodes in the graph.
+
+        This function clears and then populates the
+        attribute set_of_leaf_nodes.
+        """
+
+        self.set_of_leaf_nodes = set()
+
+        for node in self.G.nodes():
+
+            # not_leaf_node = 0 < self.G.out_degree(node)
+            is_leaf_node =  (0 == self.G.out_degree(node))
+
+            if is_leaf_node:
+                self.set_of_leaf_nodes.add(node)
+
+    #=====================================
+    def eliminate_cell_type_outliers(
+            self,
+            cell_ann_col: str = "cell_annotations",
+            clean_threshold: float = 0.8,
+            no_mixtures: bool = True,
+            batch_ann_col: str = "",
+    ):
+        """
+        Eliminate all cells that do not belong to the
+        majority.
+        """
+
+        self.find_leaf_nodes()
+
+        CA =cell_ann_col
+        node = 0
+        parent_majority = None
+        parent_ratio = None
+        # We use a deque to do a breadth-first traversal.
+        DQ = deque()
+
+        T = (node, parent_majority, parent_ratio)
+        DQ.append(T)
+
+        iteration = 0
+
+        # Elimination container
+        elim_set = set()
+        self.set_of_red_clusters = set()
+
+        while 0 < len(DQ):
+            print("===============================")
+            T = DQ.popleft()
+            node, parent_majority, parent_ratio = T
+
+            not_leaf_node = 0 < self.G.out_degree(node)
+            is_leaf_node = not not_leaf_node
+
+            children = self.G.successors(node)
+
+            if is_leaf_node:
+                nodes = [node]
+            else:
+                nodes = nx_descendants(self.G, node)
+
+            #Leaf nodes
+            LN = self.set_of_leaf_nodes.intersection(nodes)
+
+            mask = self.A.obs["sp_cluster"].isin(LN)
+            subgroup = self.A.obs[CA].loc[mask]
+            node_size = mask.sum()
+            print(f"Working with {node=}")
+            print(f"Size of {node=}: {node_size}")
+            vc = subgroup.value_counts(normalize=True)
+            print("===============================")
+            print(vc)
+
+            majority_group = vc.index[0]
+            majority_ratio = vc.iloc[0]
+
+            if majority_ratio == 1:
+                #The cluster is homogeneous.
+                #Nothing to do here.
+                continue
+
+
+            if majority_ratio < clean_threshold:
+                #We are below clean_threshold, so we add 
+                #these nodes to the deque for 
+                #further processing.
+                print("===============================")
+                for child in children:
+                    print(f"Adding node {child} to DQ.")
+                    T = (child,
+                         majority_group,
+                         majority_ratio)
+                    DQ.append(T)
+            else:
+                #We are above the cleaning threshold. 
+                #Hence, we can star cleaning this node.
+                print("===============================")
+                print(f"Cleaning {node=}.")
+                print(f"{majority_group=}.")
+                print(f"{majority_ratio=}.")
+
+                if no_mixtures:
+                    #We do not allow minorities.
+                    mask = subgroup != majority_group
+                    Q = subgroup.loc[mask]
+                    elim_set.update(Q.index)
+                    continue
+
+        print(f"Cells to eliminate: {len(elim_set)}")
+        self.cells_to_be_eliminated = elim_set
+
+        #List of cell ids to be eliminated.
+        ES = list(elim_set)
+
+        #Cell types of cells to be eliminated.
+        cell_labels = self.A.obs[CA].loc[ES]
+
+        #Batches containing cells to be eliminated.
+        if 0 < len(batch_ann_col):
+            batch_labels = self.A.obs[
+                batch_ann_col
+            ].loc[ES]
+
+            #Batch origin quantification.
+            batch_vc = batch_labels.value_counts()
+            print(batch_vc)
+
+        #Clusters containing cells to be eliminated.
+        cluster_labels = self.A.obs["sp_cluster"].loc[ES]
+
+        #Cell type quatification.
+        cell_vc = cell_labels.value_counts()
+
+
+        #Cluster quantification.
+        cluster_vc = cluster_labels.value_counts()
+
+        # We then compare against the original number
+        # of cells in each cluster.
+        cluster_ref = self.A.obs["sp_cluster"].value_counts()
+
+        print(cell_vc)
+        print(cluster_vc)
+
+        #Compare side-by-side the cells to be eliminated
+        #for each cluster with the total number of cells
+        #for that cluster.
+        from pandas import merge
+        df = merge(
+            cluster_ref,
+            cluster_vc,
+            left_index=True,
+            right_index=True,
+            how="inner",
+        )
+
+        df["status"] = df.count_x == df.count_y
+
+        #Clusters to be eliminated
+        red_clusters = df.index[df["status"]]
+
+        self.set_of_red_clusters = set(red_clusters)
+
+        ids_to_erase = self.A.obs.index.isin(elim_set)
+
+        #Create a new AnnData object after eliminating 
+        #the cells.
+        self.A = self.A[~ids_to_erase].copy()
+
+    #=====================================
+    def rebuild_graph_after_removing_cells(
+            self,
+    ):
+        """
+        Use this function once cells have been removed
+        from the AnnData object. This function will
+        rearrange the tree to take into consideration
+        the potential elimination of leaf nodes 
+        or branches.
+
+        Note that this function only works on the graph
+        and will not create the TMC structures necessary
+        to visualize it in TMCI.
+
+        For such purpose, please use the 
+        generate_tmci_structures_from_graph().
+        """
+
+        DQ = deque()
+        DQ.append(0)
+
+        while 0 < len(DQ):
+
+            # (gp_node_id, p_node_id,
+            #  s_node_id, node_id) = S.pop()
+            node_id = DQ.popleft()
+            cluster_size = self.G.nodes[node_id]["size"]
+            not_leaf_node = 0 < self.G.out_degree(node_id)
+            is_leaf_node = not not_leaf_node
+
+            flag_to_erase = False
+            if is_leaf_node:
+                if node_id in self.set_of_red_clusters:
+                    #If this node has been flagged to 
+                    #be erased, then we proceed with the
+                    #rearrangement and subsequent elimination.
+                    flag_to_erase = True
+            else:
+                nodes = nx_descendants(self.G, node_id)
+                mask = self.A.obs["sp_cluster"].isin(nodes)
+                n_viable_cells = mask.sum()
+                if n_viable_cells == 0:
+                    flag_to_erase = True
+
+            p_node_id = self.get_parent_node(node_id)
+            gp_node_id = self.get_grandpa_node(node_id)
+            s_node_id = self.get_sibling_node(node_id)
+            
+            if flag_to_erase:
+
+                #Connect the grandpa node to the sibling node
+                self.G.add_edge(gp_node_id, s_node_id)
+
+                #Remove the edge between the parent node
+                #and the sibling node.
+                self.G.remove_edge(p_node_id, s_node_id)
+
+                #Remove the parent node.
+                self.G.remove_node(p_node_id)
+                print(f"Removed {p_node_id=}")
+
+                if not_leaf_node:
+                    #Remove all descendants
+                    self.G.remove_nodes_from(nodes)
+
+                #Remove the current node.
+                self.G.remove_node(node_id)
+                print(f"Removed {node_id=}")
+                continue
+
+            #No elimination took place.
+            children = self.G.successors(node_id)
+            for child in children:
+                DQ.append(child)
+
+    #=====================================
+    def get_parent_node(self, node: int) -> int:
+        """
+        """
+
+        if node is None:
+            return None
+
+        it = self.G.predecessors(node)
+        parents = list(it)
+
+        if len(parents) == 0:
+            return None
+
+        return parents[0]
+
+    #=====================================
+    def get_grandpa_node(self, node: int) -> int:
+        """
+        """
+
+        parent  = self.get_parent_node(node)
+        grandpa =  self.get_parent_node(parent)
+
+        return grandpa
+
+    #=====================================
+    def get_sibling_node(self, node: int) -> int:
+        """
+        """
+
+        parent  = self.get_parent_node(node)
+
+        if parent is None:
+            return None
+
+        children = self.G.successors(parent)
+
+        for child in children:
+
+            if child != node:
+                return child
+
+        return None
+
+    #=====================================
+    def generate_tmci_structures_from_graph(
+            self,
+            show_stubs: bool = False,
+    ):
+        """
+        This function has been tested on simple examples.
+        Nov 16, 2025.
+        This function will create the required files in 
+        order to run TMCI and visualize the tree.
+        """
+        from numpy import nonzero as np_nonzero
+        S      = []
+        self.J = MultiIndexList()
+        node_id= 0
+
+        self.node_to_j_index = {}
+        self.node_to_j_index[node_id] = (1,)
+
+        Q = self.G.nodes[node_id]["Q"]
+        D = self.modularity_to_json(Q)
+
+        self.J.append(D)
+        self.J.append([])
+
+        children = self.G.successors(node_id)
+
+        # The largest index goes first so that 
+        # when we pop an element, we get the smallest
+        # of the two that were inserted.
+        children = sorted(children, reverse=True)
+        for child in children:
+            T = (node_id, child)
+            S.append(T)
+
+        while 0 < len(S):
+
+            p_node_id, node_id = S.pop()
+            cluster_size = self.G.nodes[node_id]["size"]
+            not_leaf_node = 0 < self.G.out_degree(node_id)
+            is_leaf_node = not not_leaf_node
+
+            nodes = nx_descendants(self.G, node_id)
+            mask = self.A.obs["sp_cluster"].isin(nodes)
+            n_viable_cells = mask.sum()
+
+            if show_stubs:
+                #---------------------------------
+                #This section will only be relevant when
+                #cells have been removed through another
+                #process.
+                #---------------------------------
+                # Non-leaf nodes with zero viable cells
+                # are eliminated.
+                if not_leaf_node and n_viable_cells == 0:
+                    # print(f"Cluster {node_id} has to "
+                    #       "be eliminated.")
+                    continue
+
+                if node_id in self.set_of_red_clusters:
+                    continue
+                #---------------------------------
+
+            j_index = self.node_to_j_index[p_node_id]
+            n_stored_blocks = len(self.J[j_index])
+            self.J[j_index].append([])
+            #Update the j_index. For example, if
+            #j_index = (1,) and no blocks have been
+            #stored, then the new j_index is (1,0).
+            #Otherwise, it is (1,1).
+            j_index += (n_stored_blocks,)
+
+            # print(f"{j_index=}")
+
+            if not_leaf_node:
+                #This is not a leaf node.
+                Q = self.G.nodes[node_id]["Q"]
+                D = self.modularity_to_json(Q)
+                self.J[j_index].append(D)
+                self.J[j_index].append([])
+                j_index += (1,)
+                self.node_to_j_index[node_id] = j_index
+
+                children = self.G.successors(node_id)
+                children = sorted(children, reverse=True)
+
+                for child in children:
+                    T = (node_id, child)
+                    S.append(T)
+
+            else:
+                #Leaf node
+                mask = self.A.obs["sp_cluster"] == node_id
+                rows = np_nonzero(mask)[0]
+                L = self.cells_to_json(rows)
+                self.J[j_index].append(L)
+                self.J[j_index].append([])
+
+    #=====================================
+    def modularity_to_json(self,Q):
+        return {'_item': None,
+                '_significance': None,
+                '_distance': Q}
+
+    #=====================================
+    def cell_to_json(self, cell_name, cell_number):
+        return {'_barcode': {'unCell': cell_name},
+                '_cellRow': {'unRow': cell_number}}
+
+    #=====================================
+    def cells_to_json(self,rows):
+        L = []
+        for row in rows:
+            cell_id = self.A.obs.index[row]
+            D = self.cell_to_json(cell_id, row)
+            L.append(D)
+        return {'_item': L,
+                '_significance': None,
+                '_distance': None}
+
+    #=====================================
+    def convert_graph_to_tmc_json(self):
+        """
+        The graph structure stored in the attribute\
+            self.J has to be formatted into a \
+            JSON file. This function takes care\
+            of that task. The output file is \
+            named 'cluster_tree.json' and is\
+            equivalent to the 'cluster_tree.json'\
+            file produced by too-many-cells.
+        """
+
+        fname = "cluster_tree.json"
+        fname = os_path_join(self.output, fname)
+
+        with open(fname,"w",encoding="utf-8") as output_file:
+            from json import dump as json_dump 
+            json_dump(
+                self.J,
+                output_file,
+                cls=JEncoder,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+
+    #=====================================
+    def write_cell_assignment_to_csv(self):
+        """
+        This function creates a CSV file that indicates \
+            the assignment of each cell to a specific \
+            cluster. The first column is the cell id, \
+            the second column is the cluster id, and \
+            the third column is the path from the root \
+            node to the given node.
+        """
+        fname = 'clusters.csv'
+        fname = os_path_join(self.output, fname)
+        labels = ['sp_cluster','sp_path']
+        df = self.A.obs[labels]
+        df.index.names = ['cell']
+        df = df.rename(columns={'sp_cluster':'cluster',
+                                'sp_path':'path'})
+        df.to_csv(fname, index=True)
+
+    #=====================================
+    def write_cluster_list_to_tmc_json(self):
+        """
+        This function creates a JSON file that indicates \
+            the assignment of each cell to a specific \
+            cluster. 
+        """
+        master_list = []
+        relevant_cols = ["sp_cluster", "sp_path"]
+        df = self.A.obs[relevant_cols]
+        df = df.reset_index(names="cell")
+        df = df.sort_values(["sp_cluster","cell"])
+        for idx, row in df.iterrows():
+            cluster = row["sp_cluster"]
+            path_str= row["sp_path"]
+            cell    = row["cell"]
+            nodes = path_str.split("/")
+            list_of_nodes = []
+            sub_dict_1 = {"unCell":cell}
+            sub_dict_2 = {"unRow":idx}
+            main_dict = {"_barcode":sub_dict_1,
+                         "_cellRow":sub_dict_2}
+            for node in nodes:
+                d = {"unCluster":int(node)}
+                list_of_nodes.append(d)
+            
+            master_list.append([main_dict, list_of_nodes])
+
+        fname = "cluster_list.json"
+        fname = os_path_join(self.output, fname)
+        with open(fname,"w",encoding="utf-8") as output_file:
+            from json import dump as json_dump 
+            json_dump(
+                master_list,
+                output_file,
+                cls=JEncoder,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+
+    #=====================================
+    def convert_graph_to_json(self):
+        """
+        The graph is stored in the JSON format.
+        """
+        # Write graph "self.G" to JSON file.
+        from networkx import node_link_data
+        nld = node_link_data(self.G)
+        fname = "graph.json"
+        fname = os_path_join(self.output, fname)
+        with open(fname, "w", encoding="utf-8") as f:
+            from json import dump as json_dump 
+            json_dump(nld, f, ensure_ascii=False, indent=4)
+
+    #=====================================
+    def store_outputs(self,
+                      store_in_uns_dict = False):
+        """
+        S
+        """
+        self.write_cell_assignment_to_csv()
+        self.convert_graph_to_tmc_json()
+        self.convert_graph_to_json()
+        self.write_cluster_list_to_tmc_json()
+
+        if store_in_uns_dict:
+            #The directed graph is stored in the dict.
+            self.A.uns["tmc_graph"] = self.G
+            x = self.set_of_leaf_nodes
+            #The list of leaf nodes is stored in the dict.
+            self.A.uns["tmc_leaf_nodes"] = x
+
+            from json import dumps as json_dumps 
+            S = json_dumps(
+                self.J,
+                cls=JEncoder,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+
+            #The cluster_tree.json is stored in the
+            #dictionary as a string.
+            self.A.uns["tmc_json"] = S
+
+    #=====================================
+    def load_graph(
+            self,
+            json_file_path: str,
+            load_from_uns: bool = False,
+            clusters_file_path: Optional[str] = None,
+        ):
+
+        """
+        Load the JSON file. Note that when loading the data,
+        the attributes of each node are assumed to be 
+        strings. Hence, we have to convert them.
+        We use int(x) for the number of cells, and float(x) 
+        for the modularity.
+        """
+
+        self.set_of_leaf_nodes = set()
+
+        if load_from_uns:
+            self.G = self.A.uns["tmc_graph"].copy()
+
+        else:
+
+            if not os_path_exists(json_file_path):
+                raise ValueError("File does not exists.")
+
+            print("Reading JSON file ...")
+
+            with open(json_file_path, encoding="utf-8") as f:
+                from json import load as json_load 
+                json_graph = json_load(f)
+
+            from networkx import node_link_graph
+            self.G = node_link_graph(json_graph)
+            
+            print("Finished reading JSON file.")
+
+        n_nodes = self.G.number_of_nodes()
+
+        # Change string labels to integers.
+        D = {}
+        for k in range(n_nodes):
+            D[str(k)] = k
+
+        from networkx import relabel_nodes
+        self.G = relabel_nodes(self.G, D, copy=True)
+
+        #We convert the number of cells of each node to
+        #integer. We also convert the modularity to float.
+        #Lastly, we populate the set of leaf nodes.
+        for node in self.G.nodes():
+
+            not_leaf_node = 0 < self.G.out_degree(node)
+            is_leaf_node = not not_leaf_node
+
+            if is_leaf_node:
+                self.set_of_leaf_nodes.add(node)
+
+            size = self.G.nodes[node]["size"]
+            self.G.nodes[node]["size"] = int(size)
+
+            if "Q" in self.G.nodes[node]:
+                Q = self.G.nodes[node]["Q"]
+                self.G.nodes[node]["Q"] = float(Q)
+
+        if clusters_file_path is not None:
+            self.load_cluster_info(clusters_file_path)
+
+        print(self.G)
+
+    #=====================================
+    def load_cluster_info(
+            self,
+            clusters_file_path: str,
+            ):
+        """
+        Load the cluster file.
+        """
+
+        if not os_path_exists(clusters_file_path):
+            raise ValueError("File does not exists.")
+
+        from pandas import read_csv
+        df = read_csv(
+            clusters_file_path,
+            header=0,
+            index_col=0,
+        )
+
+        # We force the indices of the dataframe to be 
+        # strings in order to be compatible with the 
+        # indices of the AnnData object, which are 
+        # always strings.
+        df.index = map(str, df.index)
+
+        #Sort them in the same order as the AnnData object.
+        df = df.loc[self.A.obs_names].copy()
+
+        self.A.obs["sp_cluster"] = df["cluster"].values
+        self.A.obs["sp_path"] = df["path"].values
+
+        # This set should  be equal to the one
+        # stored in the tmcGraph object.
+        # self.set_of_leaf_nodes = set(df["cluster"])
+
+    #=====================================
+    def isolate_cells_from_branches(
+            self,
+            path_to_csv_file: str = "",
+            list_of_branches: List[int] = [],
+            branch_column: str = "node",
+        ):
+        """
+        This function produces a mask of booleans
+        that indicate if a cell belongs or not
+        to a leaf node contained in 
+        one of the branches.
+        """
+
+        if 0 < len(path_to_csv_file):
+            #This file contains all the branches
+            from pandas import read_csv
+            df = read_csv(
+            clusters_file_path,
+            header=0,
+            index_col=0,
+        )
+
+        # We force the indices of the dataframe to be 
+        # strings in order to be compatible with the 
+        # indices of the AnnData object, which are 
+        # always strings.
+        df.index = map(str, df.index)
+
+        #Sort them in the same order as the AnnData object.
+        df = df.loc[self.A.obs_names].copy()
+
+        self.A.obs["sp_cluster"] = df["cluster"].values
+        self.A.obs["sp_path"] = df["path"].values
+
+        # This set should  be equal to the one
+        # stored in the tmcGraph object.
+        self.set_of_leaf_nodes = set(df["cluster"])
+
+        self.tf = clock()
+        delta = self.tf - self.t0
+        txt = ("Elapsed time to load cluster file: " + 
+                f"{delta:.2f} seconds.")
+        print(txt)
+
+    #=====================================
+    def collapse_branch(
+            self,
+            branch: int,
+        ):
+        """
+        All cells belonging to a branch are to be
+        collapsed into one leaf node.
+        """
+        not_leaf_node = 0 < self.G.out_degree(branch)
+        is_leaf_node = not not_leaf_node
+
+        if is_leaf_node:
+            #Nothing to be done
+            return
+
+        descendants = nx_descendants(self.G, branch)
+        #We are going to relabel the clusters
+        #using the branch number.
+
+        # The set of leaf nodes is not updated.
+        leaf_nodes = self.set_of_leaf_nodes.intersection(
+            descendants)
+
+        sp_cluster = "sp_cluster"
+        mask = self.A.obs[sp_cluster].isin(leaf_nodes)
+        self.A.obs.loc[mask, sp_cluster] = branch
+
+
+        s_feature = "size"
+        if s_feature in self.G.nodes[branch]:
+            n_cells = self.G.nodes[branch][s_feature]
+            print(f"{n_cells} cells have been relocated.")
+
+        self.G.remove_nodes_from(descendants)
+            
+
+    #=====================================
+    def label_nodes_by_depth_first(
+            self,
+            source_col: str = "sp_cluster",
+            mapped_col: str = "sp_cluster_pruned",
+            update_graph: bool = False,
+        ):
+        S = [0]
+        node_counter = -1
+        map_ori_to_pruned_id = {0:0}
+        set_of_leaf_nodes = set()
+
+        while 0 < len(S):
+
+            node_id = S.pop()
+            node_counter += 1
+            map_ori_to_pruned_id[node_id] = node_counter
+
+            if self.G.out_degree(node_id) == 0:
+                set_of_leaf_nodes.add(node_id)
+                continue
+
+            children = self.G.successors(node_id)
+            children = sorted(children, reverse=True)
+
+            # We append the children from largest to smallest
+            # so that the smallest comes first from the stack.
+            for child in children:
+                S.append(child)
+
+        # print(map_ori_to_pruned_id)
+        # x = self.A.obs[source_col]
+        # print(x)
+
+        # set_A = set(self.A.obs[source_col].values)
+        # set_B = set(map_ori_to_pruned_id.keys())
+        # print(f"{max(set_A)=}")
+        # print(f"{max(set_B)=}")
+        # A_B = set_A - set_B
+        # # B_A = set_B - set_A
+
+        # print("---------")
+        # print(f"{set_A.issubset(set_B)=}")
+        # print("---------")
+        # print(A_B)
+
+        x = self.A.obs[source_col].map(map_ori_to_pruned_id)
+        self.A.obs[mapped_col] = x
+
+        # x = self.A.obs[mapped_col].astype(int)
+        # self.A.obs[mapped_col] = x
+
+        if update_graph:
+            from networkx import relabel_nodes
+            self.G = relabel_nodes(
+                self.G,
+                map_ori_to_pruned_id,
+                copy=True,
+            )
+
+        # print(self.A.obs[mapped_col].value_counts())
+
+
+        
+    #=====================================
+    def prune_tree_by_feature(
+            self,
+            feature: str,
+            mad_multiplier: float,
+        ):
+        """
+        Prune the tree based on a feature like modularity
+        or size.
+
+        If the value of the feature at a given node is 
+        below the threshold, then the node in question
+        will be collapsed, i.e., all the cells belonging
+        to the descendants of that node will be transferred
+        to that node, essentially converting a branch node
+        into a leaf node. The AnnData object will also
+        be modified.
+        """
+
+        list_of_values = []
+        for node in self.G.nodes:
+            if feature in self.G.nodes[node]:
+                value = self.G.nodes[node][feature]
+                # if feature == "size":
+                #     if value < 1:
+                #         raise ValueError("XXX")
+                list_of_values.append(value)
+        
+        from scipy.stats import median_abs_deviation
+        from numpy import median as np_median
+        median_abs_dev = median_abs_deviation(list_of_values)
+        print(f"{median_abs_dev=}")
+
+        median = np_median(list_of_values)
+        print(f"{median=}")
+        threshold = median + mad_multiplier * median_abs_dev
+        print(f"{threshold=}")
+
+        DQ = deque()
+
+        DQ.append((0, None))
+        node_counter = 0
+
+        while 0 < len(DQ):
+            # print("===============================")
+            node_id, parent_id = DQ.popleft()
+
+            if node_id not in self.G:
+                continue
+
+            not_leaf_node = 0 < self.G.out_degree(node_id)
+            # is_leaf_node = not not_leaf_node
+            has_feature = feature in self.G.nodes[node_id]
+
+            if has_feature:
+                #There is work to do.
+                pass
+            else:
+                #Nothing to do since we cannot 
+                #compare this node against the threshold.
+                #We assume that the children of this node,
+                # if any, also lack this feature.
+                continue
+
+            value = self.G.nodes[node_id][feature]
+
+            if value < threshold:
+
+                node_to_remove = node_id
+
+                if feature == "size":
+                    if parent_id is not None:
+                        node_to_remove = parent_id
+                    else:
+                        pass
+                #We have to collapse the branch.
+                print(
+                    f"Branch {node_to_remove}:" 
+                    f" {feature}={value}")
+                self.collapse_branch(node_to_remove)
+            else:
+                # The value was above threshold.
+                # Hence, we will add the children
+                # for further inspection.
+                # Note that we are doing a breadth-first
+                # search. However, the order of the 
+                # children is irrelevant.
+                for child in self.G.successors(node_id):
+                    # Note that we include the parent node
+                    # in the second position of the tuple.
+                    DQ.append((child, node_id))
+
+
+    #====END=OF=CLASS=====================

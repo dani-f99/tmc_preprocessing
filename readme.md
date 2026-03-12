@@ -6,10 +6,11 @@
 --------------------------------------------------------------------------------
 
 
-# PROJECT: Code Rehaul of Too Many Cells Preporcessing Pipline
+# PROJECT UPDATE:Too Many Cells Preprocessing Pipeline
 
 ## 1. OVERVIEW
-This program automates and organizes the bioinformatics pipeline originally developed by Bshara and [Name]. It streamlines the transition from raw BCR clone data to interactive cluster visualizations.
+This program automates and organizes the bioinformatics pipeline originally developed by Bshara Sahoury and Saif Rahal. 
+It streamlines the transition from raw BCR clone data to interactive cluster visualizations.
 Pipeline Overview
 
 The pipeline consists of two primary stages:
@@ -23,6 +24,8 @@ The pipeline consists of two primary stages:
 
 
 ## 2. PREREQUISITES
+This program works on ImmuneDB databse (see resources section)
+
 Please ensure the following python modules are installed:
 - `Pandas`
 - `NumPy` 
@@ -85,7 +88,8 @@ The program uses the following folder structure:
     -  /tms_output/`database`-`subject` ## Dedicated folder for each database and subject.
 	
 	
-## 6. RESOUCES
-- See origin authurs pdf tuorial at the `source\bshara` folder (readme.pdf).
+## 6. RESOURCES
+- See original authors pdf tutorial in source\bshara folder (../source/bshara/readme.pdf)
 - too-many-cells-python: https://gregoryschwartz.github.io/too-many-cells/
 - too-many-cells-interactive: https://github.com/schwartzlab-methods/too-many-cells-python
+- ImmuneDB: https://immunedb.com

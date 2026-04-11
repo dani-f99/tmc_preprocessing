@@ -38,7 +38,7 @@ class RunTmsTest(unittest.TestCase):
             i_output = os.path.join("tms_output", folder_name)
 
             # output files, used to check if the output already exists
-            output_required = ["cluster_list.json", "cluster_tree.json", "clusters.csv","graph.json", "node_info.csv"]
+            output_required = ["cells_clusters_info.csv", "cluster_list.json", "cluster_tree.json", "clusters.csv","graph.json", "node_info.csv"]
             output_actual = os.listdir(i_output)
             
             # Checking if the output already exists
@@ -49,12 +49,15 @@ class RunTmsTest(unittest.TestCase):
             else:
                 try:
                     # Creating too many cells object with the loaded data.
-                    tmc_obj = tmc(i_input,
-                                   i_output,
+                    tmc_obj = tmc(i_input,  # input folder
+                                  i_output, # output folder
                                   input_is_matrix_market=True)
 
                     # Runnig the spectral clustring 
                     tmc_obj.run_spectral_clustering()
+
+                    #saving cell-clusters information into csv
+                    tmc_obj.A.obs.to_csv(os.path.join(i_output, "cells_clusters_info.csv"))
 
                     # Storing the outputs in the input folder
                     tmc_obj.store_outputs()

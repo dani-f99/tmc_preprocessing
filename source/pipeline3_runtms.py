@@ -24,7 +24,7 @@ class RunTmsTest(unittest.TestCase):
 
     # Creating required folders
     def test_01_folders_creation(self):        
-        self.path_mainf = "tms_output"
+        self.path_mainf = "tmc_output"
         req_folders = [self.path_mainf] + [os.path.join(self.path_mainf, "-".join([self.db_name, f"subject{i}"])) for i in self.db_subjects]
         create_folders(req_folders)
 

@@ -18,7 +18,7 @@ import os
 class PipelineMatrixMakerTest(unittest.TestCase):
     """
     Pipeline of matrix creation, this is the second pipeline of the preprocessing
-    required for the tms input file.
+    required for the tmc input file.
     """
 
     ##################
@@ -40,7 +40,7 @@ class PipelineMatrixMakerTest(unittest.TestCase):
 
 
     ################################
-    # 1st step in the tms input data
+    # 1st step in the tmc input data
     def test_01_matrix_builder(self):
         DB = self.db_name #database name
         temp_path = self.path_temp

@@ -18,7 +18,7 @@ import os
 class PipelineMatrixMakerTest(unittest.TestCase):
     """
     Pipeline of matrix creation, this is the second pipeline of the preprocessing
-    required for the tms input file.
+    required for the tmc input file.
     """
 
     ##################
@@ -40,7 +40,7 @@ class PipelineMatrixMakerTest(unittest.TestCase):
 
 
     ################################
-    # 1st step in the tms input data
+    # 1st step in the tmc input data
     def test_01_matrix_builder(self):
         DB = self.db_name #database name
         temp_path = self.path_temp
@@ -179,62 +179,73 @@ class PipelineMatrixMakerTest(unittest.TestCase):
         temp_path = self.path_temp # first preprocessing pipeline path
         dir_path = self.path_final #final file path
 
-        for subject_id in self.subjects:
-            output_file = os.path.join(dir_path, "{}-subject{}".format(DB, subject_id), "labels.csv") # path for the labels.csv
+        # Metadata labels names
+        metadata_labels = self.config_db["metadata_labels"].split(",")
+        metadata_relabel = self.config_db["metadata_relabels"].split(",")
 
-            if os.path.exists(output_file):
-                print("> Step No.3 of the matrix creation pipeline already done, process is done.")
-            
-            else:
-                # Importing the metadata table from the MySQL serever
-                # Setting up label and mysql query
-                metadata_label = self.config_db["metadata_label"]
-                metadata_qry = "SELECT * FROM covid_vaccine_new.sample_metadata"
-                metadata_df = mysql_qry(qry=metadata_qry)
-                
-                
-                # Verifing that there is `metadata_label` input in the `sql_congif.json` file
-                if metadata_label == "":
-                    print("> No metadata label selected, aborting creation of `labels.csv`")
+        # Cheecking if there is relabeling for the metadata
+        if  (metadata_relabel != "") & (len(metadata_relabel) == len(metadata_labels)):
+            label_dict = {i:j for i,j in zip(metadata_labels, metadata_relabel)}
+        else:
+            label_dict = {i:j for i,j in zip(metadata_labels, metadata_labels)}
+
+        for subject_id in self.subjects:
+            for mlabel in metadata_labels:
+                output_file = os.path.join(dir_path, "{}-subject{}".format(DB, subject_id), f"labels-{label_dict[mlabel]}.csv") # path for the labels.csv
+
+                if os.path.exists(output_file):
+                    print("> Step No.3 of the matrix creation pipeline already done, process is done.")
                 
                 else:
-                    print(f"metadata label `{metadata_label}` selected, creating `labels.csv`.")
+                    # Importing the metadata table from the MySQL serever
+                    # Setting up label and mysql query
+                    
+                    metadata_qry = "SELECT * FROM covid_vaccine_new.sample_metadata"
+                    metadata_df = mysql_qry(qry=metadata_qry)
+                    
+                    
+                    # Verifing that there is `metadata_label` input in the `sql_congif.json` file
+                    if metadata_labels == "":
+                        print("> No metadata label selected, aborting creation of `labels.csv`")
+                    
+                    else:
+                        print(f"metadata label `{mlabel}` selected, creating `labels.csv`.")
 
-                    # Dictionary that link sample_id to metadata label:
-                    filt_df = metadata_df[metadata_df["key"] == metadata_label]
-                    labels_dict = {int(i):j for i,j in zip(filt_df.sample_id.values, filt_df.value.values)}
+                        # Dictionary that link sample_id to metadata label:
+                        filt_df = metadata_df[metadata_df["key"] == mlabel]
+                        labels_dict = {int(i):j for i,j in zip(filt_df.sample_id.values, filt_df.value.values)}
 
-                    # Loading the required datasets in order backtrack to the first metadata contining files
-                    """
-                    Steps of the backtracking:
-                    1. getting the `id` labels from the k-mers used to create the barcodes (f03).
-                    2. merging the filterd k-mers (f03) with the k-mer table (f01) by 'id'.
-                    """
-                
-                    # Importing the preprocsssed tables
-                    input_f03_kmers = os.path.join(temp_path, "3_{}_{}_VarRemain.csv".format(DB, subject_id)) # kmers files with id column
-                    input_f06_filt_kmers = os.path.join(temp_path, "6_{}_{}_filt_slidingwindow_Var.csv".format(DB, subject_id)) # filtred k-mer file (used for barcodes creation)
-                    input_01_seqk = os.path.join(temp_path, "1_{}_{}_seqK.csv".format(DB, subject_id)) # initial k-mer file (with metadata)
-                    input_barcodes = os.path.join(dir_path, "{}-subject{}".format(DB, subject_id), "barcodes.tsv") # path of the barcodes.tsv
+                        # Loading the required datasets in order backtrack to the first metadata contining files
+                        """
+                        Steps of the backtracking:
+                        1. getting the `id` labels from the k-mers used to create the barcodes (f03).
+                        2. merging the filterd k-mers (f03) with the k-mer table (f01) by 'id'.
+                        """
+                    
+                        # Importing the preprocsssed tables
+                        input_f03_kmers = os.path.join(temp_path, "3_{}_{}_VarRemain.csv".format(DB, subject_id)) # kmers files with id column
+                        input_f06_filt_kmers = os.path.join(temp_path, "6_{}_{}_filt_slidingwindow_Var.csv".format(DB, subject_id)) # filtred k-mer file (used for barcodes creation)
+                        input_01_seqk = os.path.join(temp_path, "1_{}_{}_seqK.csv".format(DB, subject_id)) # initial k-mer file (with metadata)
+                        input_barcodes = os.path.join(dir_path, "{}-subject{}".format(DB, subject_id), "barcodes.tsv") # path of the barcodes.tsv
 
-                   
-                    # Joining the tables to get the sample id
-                    f01_df = pd.read_csv(input_01_seqk).reset_index(names="id")
-                    f03_df = pd.read_csv(input_f03_kmers)
-                    f06_df = pd.read_csv(input_f06_filt_kmers, index_col=0)
-                    barcodes_df = pd.read_csv(input_barcodes, sep="\t", index_col=None, header=None)
-                    barcodes_df.columns = ["kmer"]
+                    
+                        # Joining the tables to get the sample id
+                        f01_df = pd.read_csv(input_01_seqk).reset_index(names="id")
+                        f03_df = pd.read_csv(input_f03_kmers)
+                        f06_df = pd.read_csv(input_f06_filt_kmers, index_col=0)
+                        barcodes_df = pd.read_csv(input_barcodes, sep="\t", index_col=None, header=None)
+                        barcodes_df.columns = ["kmer"]
 
-                    # Getting the filtred kmers f03
-                    f03_df = f03_df[f03_df.kmer.isin(f06_df.kmer.values)]
+                        # Getting the filtred kmers f03
+                        f03_df = f03_df[f03_df.kmer.isin(f06_df.kmer.values)]
 
-                    # Using the labels_dict to map the labels (via sample id)
-                    merged_df = pd.merge(left=f01_df, right=f03_df, how="right", on="id")[["kmer","id","sample_id"]]
-                    merged_df["label"] = merged_df.sample_id.map(labels_dict)
+                        # Using the labels_dict to map the labels (via sample id)
+                        merged_df = pd.merge(left=f01_df, right=f03_df, how="right", on="id")[["kmer","id","sample_id"]]
+                        merged_df["label"] = merged_df.sample_id.map(labels_dict)
 
-                    # Adding labels to the k-kmers
-                    labels_df = pd.merge(left=barcodes_df, right=merged_df, on="kmer", how="left")[["kmer", "label"]]
-                    labels_df.columns = [["item","label"]]
-                    labels_df.to_csv(output_file, index=0)
+                        # Adding labels to the k-kmers
+                        labels_df = pd.merge(left=barcodes_df, right=merged_df, on="kmer", how="left")[["kmer", "label"]]
+                        labels_df.columns = [["item","label"]]
+                        labels_df.to_csv(output_file, index=0)
 
-                    print(f"{output_file} labels file created.")
+                        print(f"{output_file} labels file created.")

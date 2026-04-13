@@ -2,8 +2,9 @@ source/__pycache__
 sql_config.json
 dev_notebook.ipynb
 temp_data
-tms_input
-tms_output
+tmc_input
+tmc_output
+clusters_analysis
 reports
 rem.csv
 .archive

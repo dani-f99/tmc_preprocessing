@@ -78,14 +78,16 @@ The program uses the following folder structure:
 `database` -> database name as configured in `sql-config.json`, `database.db_name`.
 `subject` -> subject_id, each subject data in it's unique folder. configured in `sql-config.json`, `database.subject_id`.
 
-- /reports                              ## The program will save report for each run to this folder with as `date_database_subject.txt`.
-- /source                               ## Contains the program code.
-- /temp_data                            ## Store the files constructed along the pipeline.
-    -  /temp_data/`database`            ## Dedicated folder for each database and subject.
-- /tms_input                            ## Store the preproceesed output, can be used as input for the too many cells algorithm.
-    -  /tms_input/`database`-`subject`  ## Dedicated folder for each database and subject.
-- /tms_output                           ## Store the too-many-cells clustring output, can be used as input for the too-many-cells-interactive.
-    -  /tms_output/`database`-`subject` ## Dedicated folder for each database and subject.
+- /reports                                   ## The program will save report for each run to this folder with as `date_database_subject.txt`.
+- /source                                    ## Contains the program code.
+- /temp_data                                 ## Store the files constructed along the pipeline.
+    -  /temp_data/`database`                 ## Dedicated folder for each database and subject.
+- /tmc_input                                 ## Store the preproceesed output, can be used as input for the too many cells algorithm.
+    -  /tms_input/`database`-`subject`       ## Dedicated folder for each database and subject.
+- /tmc_output                                ## Store the too-many-cells clustring output, can be used as input for the too-many-cells-interactive.
+    -  /tms_output/`database`-`subject`      ## Dedicated folder for each database and subject.
+- /cluster_analysis                          ## Store both csv and plot for node analysis
+    - /cluster_analysis/`database`-`subject` ## Dedicated folder for each database and subject.
 	
 	
 ## 6. RESOURCES

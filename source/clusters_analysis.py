@@ -127,7 +127,7 @@ class cluster_analysis():
         save_result : bool -> boolean value, if true will save the plot.
         """
         node_cells = self.node_cells.loc[self.node_cells.node_id == node_id, "barcodes"].values[0].split(",")
-        self.node_info = self.cell_clusters[self.cell_clusters.index.isin(node_cells)]
+        self.node_info = self.cell_clusters[self.cell_clusters.index.isin(node_cells)].copy()
         self.last_node_id = node_id
 
         if save_result:
@@ -146,11 +146,25 @@ class cluster_analysis():
         by : list -> single value or list of value of metadata columns on which by the pie plot will be presented.
         """
 
+        #
         if (isinstance(self.node_info, pd.DataFrame) is False) | (self.last_node_id != node_id):
             raise Exception(f"please run 'cluster_analysis.lookup_node(node_id={node_id})' before plotting the node.")
-        
 
-        node_valcounts = self.node_info[by].value_counts()
+        #
+        by_final = by[0]
+        by_values = self.node_info[by_final]
+
+        #
+        if len(by) > 1:
+            for label in by[1:]:
+                by_values += " , " + self.node_info[label]
+                by_final += "." + label
+            
+            self.node_info[by_final] = by_values
+
+
+        # metadata labels to be counted in plot
+        node_valcounts = by_values.value_counts()
         total = node_valcounts.sum()
 
         # Pie plot
@@ -159,9 +173,12 @@ class cluster_analysis():
                 textprops={'fontsize': 14})
 
         # titles and legend
-        plt.suptitle(f"Node {99132} - {"time_point"} Fractions", fontsize=14)
+        plot_label = by_final.replace(".", ", ")
+        plt.suptitle(f"Node {99132} ({plot_label})", fontsize=14)
         plt.title(f"Cell Count: {len(self.node_info)}", fontsize=12)
-        plt.legend(labels = node_valcounts.index, title="time_point", bbox_to_anchor=(0.95, 0.9))
+        plt.legend(labels = node_valcounts.index, 
+                   title = plot_label, 
+                   bbox_to_anchor = (0.95, 0.9))
         
         # Saving figure
         if save_plot:

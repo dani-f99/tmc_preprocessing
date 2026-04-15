@@ -20,9 +20,10 @@ class cluster_analysis():
         # file paths
         self.subject = str(subject_id)
         self.config = read_json()
-        self.path_tmc_input = os.path.join("tmc_input", f"{self.config["database"]["db_name"]}-subject{self.subject}")
-        self.path_tmc_output = os.path.join("tmc_output", f"{self.config["database"]["db_name"]}-subject{self.subject}")
-        self.path_analysis = os.path.join("clusters_analysis", f"{self.config["database"]["db_name"]}-subject{self.subject}")
+        str_subject = str(self.subject)
+        self.path_tmc_input = os.path.join("tmc_input", f"{self.config["database"]["db_name"]}-subject{str_subject }")
+        self.path_tmc_output = os.path.join("tmc_output", f"{self.config["database"]["db_name"]}-subject{str_subject }")
+        self.path_analysis = os.path.join("clusters_analysis", f"{self.config["database"]["db_name"]}-subject{str_subject }")
 
         # Creating folder if not exists
         if os.path.exists(self.path_analysis) is False:
@@ -30,7 +31,7 @@ class cluster_analysis():
                 os.mkdir(self.path_analysis)
             except:
                 os.mkdir("clusters_analysis")
-                os.mkdir("clusters_analysis", f"{self.config["database"]["db_name"]}-subject{self.subject}")
+                os.mkdir("clusters_analysis", f"{self.config["database"]["db_name"]}-subject{str_subject}")
 
 
         # Metadata labels dict

@@ -34,8 +34,8 @@ class RunTmsTest(unittest.TestCase):
         for i in self.db_subjects:
             # output and input path
             folder_name = "-".join([self.db_name, f"subject{i}"])
-            i_input = os.path.join("tms_input", folder_name)
-            i_output = os.path.join("tms_output", folder_name)
+            i_input = os.path.join("tmc_input", folder_name)
+            i_output = os.path.join("tmc_output", folder_name)
 
             # output files, used to check if the output already exists
             output_required = ["cells_clusters_info.csv", "cluster_list.json", "cluster_tree.json", "clusters.csv","graph.json", "node_info.csv"]

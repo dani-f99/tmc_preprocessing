@@ -36,7 +36,7 @@ class PipelineMatrixMakerTest(unittest.TestCase):
 
         # Setting paths
         cls.path_temp = os.path.join("temp_data", cls.db_name)
-        cls.path_final = "tms_input"
+        cls.path_final = "tmc_input"
 
 
     ################################

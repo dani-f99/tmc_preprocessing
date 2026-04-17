@@ -17,10 +17,12 @@ class cluster_analysis():
         subject_id : int -> number of the subject on which the analysis will be performed.
         """
 
-        # file paths
+        # Config imports
         self.subject = str(subject_id)
         self.config = read_json()
         str_subject = str(self.subject)
+        
+        # file paths
         self.path_tmc_input = os.path.join("tmc_input", f"{self.config["database"]["db_name"]}-subject{str_subject }")
         self.path_tmc_output = os.path.join("tmc_output", f"{self.config["database"]["db_name"]}-subject{str_subject }")
         self.path_analysis = os.path.join("clusters_analysis", f"{self.config["database"]["db_name"]}-subject{str_subject }")
@@ -74,33 +76,37 @@ class cluster_analysis():
         ### Generating node - cells dataframe ###
 
         tree_json_path = self.req_files["cluster_tree"]
-        # Increase recursion depth for very large trees
+        # Limit recursion depth for very large trees, just in case (the tree depth is much less than 200k).
         sys.setrecursionlimit(200000)
 
         # Loads the entire cluster_tree.json into a Python dictionary/list structure.
         with open(tree_json_path, 'r') as f:
             tree = json.load(f)
 
-        node_list = [] # an empty "bucket" where we will store the data for every cluster we find.
+        node_list = [] # an empty list where we will store the data for every cluster we find.
         node_id_counter = 0 # simple integer starting at 0 to give every node a unique name
 
         # visit every branch of the tree
         def traverse(node):
-            nonlocal node_id_counter
+            #refering to the int counter of the current node 
+            nonlocal node_id_counter 
             current_id = node_id_counter
             node_id_counter += 1
             
             # Too-many-cells stores each node as a pair: [metadata, [list_of_children]]. This line splits them up.
-            meta, children = node
+            meta, child = node
             
             # 1. Collect barcodes from this node and all descendants
             # (This uses a small internal helper to stay efficient)
             def get_all_barcodes(n):
-                m, c = n
-                bc = [item['_barcode']['unCell'] for item in m['_item']] if m.get('_item') else []
-                for child in c:
-                    bc.extend(get_all_barcodes(child))
-                return bc
+                meta, child = n
+                # Retriving sub-node information if not leaf node
+                barcode = [item['_barcode']['unCell'] for item in meta['_item']] if meta.get('_item') else []
+
+                for c in child:
+                    barcode.extend(get_all_barcodes(c))
+
+                return barcode
 
             barcodes = get_all_barcodes(node)
             
@@ -112,7 +118,7 @@ class cluster_analysis():
                               })
 
             # 3. Recursively visit children (DFS order)
-            for child in children:
+            for child in child:
                 traverse(child)
 
         traverse(tree)

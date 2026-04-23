@@ -30,7 +30,7 @@ database_name, subjects = db_info["db_name"], db_info["subject_id"].split(",")
 
 
 # Creating folders
-main_folders = ["temp_data", "tmc_input", "reports", "clusters_analysis"] # main folders
+main_folders = ["temp_data", "tmc_input", "reports"] # main folders
 sub_folders = [os.path.join("tmc_input", f"{database_name}-subject{i}") for i in subjects] # sub
 create_folders(main_folders + sub_folders) 
 

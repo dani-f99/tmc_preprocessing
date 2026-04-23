@@ -32,4 +32,4 @@ create_folders(main_folders + sub_folders)
 if __name__ == "__main__":
     pipeline1_result = run_pipeline(PipelinePreprocessingTest, pipeline_name="preprocessing_pipeline1")
     pipeline2_results = run_pipeline(PipelineMatrixMakerTest, pipeline_name="matrixmaker_pipeline2")
-    #pipeline3_results = run_pipeline(RunTmsTest, pipeline_name="tms_pipeline3")
+    pipeline3_results = run_pipeline(RunTmsTest, pipeline_name="tms_pipeline3")

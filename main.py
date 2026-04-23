@@ -7,7 +7,14 @@ import os
 
 
 # Cheeking that the required python packages are installed
-installed_packages = check_packages(["pandas", "numpy", "scipy", "tqdm", "pandarallel", "mysql-connector-python", "toomanycells"])
+installed_packages = check_packages(["pandas", 
+                                     "numpy", 
+                                     "scipy", 
+                                     "tqdm", 
+                                     "pandarallel", 
+                                     "pymysql", 
+                                     "toomanycells"])
+
 missing = installed_packages.loc[installed_packages.not_installed == 1, "not_installed"].index.to_list()
 
 

@@ -249,3 +249,35 @@ class PipelineMatrixMakerTest(unittest.TestCase):
                         labels_df.to_csv(output_file, index=0)
 
                         print(f"{output_file} labels file created.")
+
+    # additional step, used to extract all of the stored information for each label
+    # could've been done in step 4 but for clearity reasons become additional step
+    def test_05_labels_info(self):
+        DB = self.db_name #database name
+        temp_path = self.path_temp # first preprocessing pipeline path
+        dir_path = self.path_final #final file path
+
+        for subject_id in self.subjects:
+            output_file = os.path.join(dir_path, "{}-subject{}".format(DB, subject_id), f"barcodes_info.csv") # path for the labels.csv
+            
+            if os.path.exists(output_file):
+                print(f"barcodes info already exists for subject {subject_id}...")
+            
+            else:
+                # Importing the preprocsssed tables
+                input_f03_kmers = os.path.join(temp_path, "3_{}_{}_VarRemain.csv".format(DB, subject_id)) # kmers files with id column
+                input_f06_filt_kmers = os.path.join(temp_path, "6_{}_{}_filt_slidingwindow_Var.csv".format(DB, subject_id)) # filtred k-mer file (used for barcodes creation)
+                input_01_seqk = os.path.join(temp_path, "1_{}_{}_seqK.csv".format(DB, subject_id)) # initial k-mer file (with metadata)
+                input_barcodes = os.path.join(dir_path, "{}-subject{}".format(DB, subject_id), "barcodes.tsv") # path of the barcodes.tsv
+
+                # Joining the tables to get the sample id
+                f01_df = pd.read_csv(input_01_seqk).reset_index(names="id")
+                f03_df = pd.read_csv(input_f03_kmers)
+                f06_df = pd.read_csv(input_f06_filt_kmers, index_col=0)
+                barcodes_df = pd.read_csv(input_barcodes, sep="\t", index_col=None, header=None)
+                barcodes_df.columns = ["kmer"]
+
+                merged_df = pd.merge(left=f01_df, right=f03_df, how="right", on="id")
+                merged_df.to_csv(output_file)
+
+

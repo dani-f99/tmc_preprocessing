@@ -74,7 +74,7 @@ def read_json(path:str = "sql_config.json") -> dict:
 
 #####################################################
 # Creating folder according to the and program scheme
-def create_folders(req_folders : list = ["temp_data", "tms_input", "reports"]):
+def create_folders(req_folders : list = ["temp_data", "tmc_input", "reports"]):
     """
     req_folders : str -> required folders path, if subfolder exsits input '\\' between folders.
     """
